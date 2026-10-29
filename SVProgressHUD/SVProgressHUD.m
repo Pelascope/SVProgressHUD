@@ -62,6 +62,7 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
 
 @implementation SVProgressHUD {
     BOOL _isInitializing;
+    CGSize _lastLayoutSize;
 }
 
 + (SVProgressHUD*)sharedView {
@@ -384,6 +385,7 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
         _isInitializing = YES;
         
         self.userInteractionEnabled = NO;
+        self.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         self.activityCount = 0;
         
         self.backgroundView.alpha = 0.0f;
@@ -444,6 +446,22 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
         _isInitializing = NO;
     }
     return self;
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    
+    if (_isInitializing) {
+        return;
+    }
+    
+    // Reposition the HUD when its bounds change, e.g. after an interface rotation resized the window
+    // and, via the autoresizingMask, this view. Replaces the deprecated status bar orientation notification.
+    CGSize size = self.bounds.size;
+    if (!CGSizeEqualToSize(size, _lastLayoutSize)) {
+        _lastLayoutSize = size;
+        [self positionHUD:nil];
+    }
 }
 
 - (void)updateHUDFrame {
@@ -608,11 +626,8 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
 
 - (void)registerNotifications {
 #if TARGET_OS_IOS
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(positionHUD:)
-                                                 name:UIDeviceOrientationDidChangeNotification
-                                               object:nil];
-    
+    // Orientation changes are handled in layoutSubviews: the HUD follows its superview via its
+    // autoresizingMask and repositions itself whenever its bounds size changes.
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(positionHUD:)
                                                  name:UIKeyboardWillHideNotification
