@@ -610,7 +610,7 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
 #if TARGET_OS_IOS
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(positionHUD:)
-                                                 name:UIApplicationDidChangeStatusBarOrientationNotification
+                                                 name:UIDeviceOrientationDidChangeNotification
                                                object:nil];
     
     [[NSNotificationCenter defaultCenter] addObserver:self
@@ -643,13 +643,47 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     return (self.statusLabel.text ? @{SVProgressHUDStatusUserInfoKey : self.statusLabel.text} : nil);
 }
 
+#if !defined(SV_APP_EXTENSIONS) && TARGET_OS_IOS
+- (CGRect)statusBarFrameFromWindowScene {
+    // UIApplication.statusBarFrame is deprecated (iOS 13) and returns CGRectZero on iOS 27.
+    // Read the frame from the UIStatusBarManager of the HUD's window scene instead, falling back
+    // to the first foreground-active UIWindowScene, then to any UIWindowScene.
+    if (@available(iOS 13.0, *)) {
+        UIWindowScene *windowScene = self.window.windowScene;
+        if (!windowScene) {
+            UIWindowScene *anyWindowScene = nil;
+            for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+                if (![scene isKindOfClass:[UIWindowScene class]]) {
+                    continue;
+                }
+                if (scene.activationState == UISceneActivationStateForegroundActive) {
+                    windowScene = (UIWindowScene *)scene;
+                    break;
+                }
+                if (!anyWindowScene) {
+                    anyWindowScene = (UIWindowScene *)scene;
+                }
+            }
+            if (!windowScene) {
+                windowScene = anyWindowScene;
+            }
+        }
+        UIStatusBarManager *statusBarManager = windowScene.statusBarManager;
+        return statusBarManager ? statusBarManager.statusBarFrame : CGRectZero;
+    }
+    return CGRectZero;
+}
+#endif
+
 - (void)positionHUD:(NSNotification*)notification {
     CGFloat keyboardHeight = 0.0f;
     double animationDuration = 0.0;
 
 #if !defined(SV_APP_EXTENSIONS) && TARGET_OS_IOS
-    self.frame =  [SVProgressHUD mainWindow].bounds;
-    UIInterfaceOrientation orientation = UIApplication.sharedApplication.statusBarOrientation;
+    self.frame = [SVProgressHUD mainWindow].bounds;
+    // UIApplication.statusBarOrientation is deprecated (iOS 13) and returns Unknown on iOS 27.
+    // Derive the orientation from the frame instead, matching the SV_APP_EXTENSIONS branch below.
+    UIInterfaceOrientation orientation = CGRectGetWidth(self.frame) > CGRectGetHeight(self.frame) ? UIInterfaceOrientationLandscapeLeft : UIInterfaceOrientationPortrait;
 #elif !defined(SV_APP_EXTENSIONS) && !TARGET_OS_IOS
     self.frame = [SVProgressHUD mainWindow].bounds;
 #else
@@ -686,7 +720,7 @@ static const CGFloat SVProgressHUDLabelSpacing = 8.0f;
     CGRect orientationFrame = self.bounds;
 
 #if !defined(SV_APP_EXTENSIONS) && TARGET_OS_IOS
-    CGRect statusBarFrame = UIApplication.sharedApplication.statusBarFrame;
+    CGRect statusBarFrame = [self statusBarFrameFromWindowScene];
 #else
     CGRect statusBarFrame = CGRectZero;
 #endif
